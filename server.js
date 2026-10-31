@@ -110,7 +110,27 @@ app.delete("/api/students/:id", async (req, res) => {
 // Start server after MongoDB connects
 const PORT = process.env.PORT || 5000;
 
-mongoose.connect(process.env.MONGODB_URI)
+const mongoUri = process.env.MONGODB_URI?.trim();
+
+console.log(
+  "MongoDB URI format valid:",
+  Boolean(mongoUri) &&
+  (mongoUri.startsWith("mongodb://") ||
+   mongoUri.startsWith("mongodb+srv://"))
+);
+
+if (
+  !mongoUri ||
+  (!mongoUri.startsWith("mongodb://") &&
+   !mongoUri.startsWith("mongodb+srv://"))
+) {
+  console.error(
+    "MONGODB_URI is missing or invalid. Check the Render Environment variable."
+  );
+  process.exit(1);
+}
+
+mongoose.connect(mongoUri)
   .then(() => {
     console.log("MongoDB connected successfully");
     app.listen(PORT, () => {
