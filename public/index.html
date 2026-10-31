@@ -1,0 +1,241 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Information Management System</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+    header {
+      background: #1d4ed8;
+      color: white;
+      padding: 24px;
+      text-align: center;
+    }
+    main { max-width: 1100px; margin: 30px auto; padding: 0 18px; }
+    .card {
+      background: white;
+      padding: 22px;
+      margin-bottom: 24px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px #00000012;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      margin-top: 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+    }
+    button {
+      padding: 10px 15px;
+      border: 0;
+      border-radius: 6px;
+      cursor: pointer;
+      color: white;
+      background: #2563eb;
+      margin: 4px;
+    }
+    .delete { background: #dc2626; }
+    .cancel { background: #64748b; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+    th { background: #eff6ff; }
+    #message { margin-top: 12px; }
+    @media (max-width: 600px) {
+      header { padding: 18px 10px; }
+      .card { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Student Information Management System</h1>
+    <p>Manage student records in one place</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2 id="formTitle">Add New Student</h2>
+      <form id="studentForm">
+        <div class="form-grid">
+          <label>Student ID
+            <input id="studentId" required placeholder="e.g. STU101">
+          </label>
+          <label>Full Name
+            <input id="name" required placeholder="Student name">
+          </label>
+          <label>Email
+            <input id="email" type="email" required placeholder="student@example.com">
+          </label>
+          <label>Department
+            <input id="department" required placeholder="e.g. Computer Engineering">
+          </label>
+          <label>Semester
+            <input id="semester" type="number" min="1" max="12" required placeholder="e.g. 5">
+          </label>
+          <label>Contact
+            <input id="contact" placeholder="Phone number">
+          </label>
+        </div>
+        <button type="submit" id="submitBtn">Add Student</button>
+        <button type="button" class="cancel" id="cancelBtn" hidden>Cancel Edit</button>
+        <p id="message" role="status"></p>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Student Records</h2>
+      <button type="button" id="refreshBtn">Refresh Records</button>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Student ID</th><th>Name</th><th>Email</th>
+              <th>Department</th><th>Semester</th><th>Contact</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="studentTable">
+            <tr><td colspan="7">Loading students...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const API = "/api/students";
+    const form = document.getElementById("studentForm");
+    const table = document.getElementById("studentTable");
+    const message = document.getElementById("message");
+    let editingId = null;
+    let students = [];
+
+    async function loadStudents() {
+      table.innerHTML = '<tr><td colspan="7">Loading...</td></tr>';
+      try {
+        const response = await fetch(API);
+        if (!response.ok) throw new Error("Could not load records");
+        students = await response.json();
+        renderStudents();
+      } catch (error) {
+        table.innerHTML = '<tr><td colspan="7">Unable to load students. Check that the backend is running.</td></tr>';
+      }
+    }
+
+    function renderStudents() {
+      if (!students.length) {
+        table.innerHTML = '<tr><td colspan="7">No student records yet.</td></tr>';
+        return;
+      }
+      table.innerHTML = "";
+      students.forEach(student => {
+        const row = document.createElement("tr");
+        [
+          student.studentId, student.name, student.email,
+          student.department, student.semester, student.contact || ""
+        ].forEach(value => {
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          row.appendChild(cell);
+        });
+
+        const actions = document.createElement("td");
+        const edit = document.createElement("button");
+        edit.textContent = "Edit";
+        edit.addEventListener("click", () => startEdit(student));
+
+        const del = document.createElement("button");
+        del.textContent = "Delete";
+        del.className = "delete";
+        del.addEventListener("click", () => deleteStudent(student._id));
+
+        actions.append(edit, del);
+        row.appendChild(actions);
+        table.appendChild(row);
+      });
+    }
+
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      const payload = {
+        studentId: document.getElementById("studentId").value.trim(),
+        name: document.getElementById("name").value.trim(),
+        email: document.getElementById("email").value.trim(),
+        department: document.getElementById("department").value.trim(),
+        semester: Number(document.getElementById("semester").value),
+        contact: document.getElementById("contact").value.trim()
+      };
+
+      try {
+        const response = await fetch(editingId ? `${API}/${editingId}` : API, {
+          method: editingId ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "Request failed");
+
+        message.textContent = result.message || "Saved successfully";
+        message.style.color = "green";
+        resetForm();
+        await loadStudents();
+      } catch (error) {
+        message.textContent = error.message;
+        message.style.color = "red";
+      }
+    });
+
+    function startEdit(student) {
+      editingId = student._id;
+      ["studentId", "name", "email", "department", "semester", "contact"]
+        .forEach(field => document.getElementById(field).value = student[field] ?? "");
+      document.getElementById("formTitle").textContent = "Edit Student";
+      document.getElementById("submitBtn").textContent = "Update Student";
+      document.getElementById("cancelBtn").hidden = false;
+      message.textContent = "";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function deleteStudent(id) {
+      if (!confirm("Are you sure you want to delete this student?")) return;
+      try {
+        const response = await fetch(`${API}/${id}`, { method: "DELETE" });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "Delete failed");
+        message.textContent = result.message;
+        message.style.color = "green";
+        await loadStudents();
+      } catch (error) {
+        message.textContent = error.message;
+        message.style.color = "red";
+      }
+    }
+
+    function resetForm() {
+      editingId = null;
+      form.reset();
+      document.getElementById("formTitle").textContent = "Add New Student";
+      document.getElementById("submitBtn").textContent = "Add Student";
+      document.getElementById("cancelBtn").hidden = true;
+    }
+
+    document.getElementById("cancelBtn").addEventListener("click", resetForm);
+    document.getElementById("refreshBtn").addEventListener("click", loadStudents);
+    loadStudents();
+  </script>
+</body>
+</html>
